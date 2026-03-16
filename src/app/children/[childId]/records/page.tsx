@@ -1,0 +1,139 @@
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { getStaffName } from "@/lib/actions/auth";
+import { createClient } from "@/lib/supabase/server";
+import Header from "@/components/Header";
+import ChildSwitcher from "@/components/ChildSwitcher";
+import RecordCard from "@/components/RecordCard";
+import type { Child, Record as RecordType } from "@/lib/types";
+
+type Props = {
+  params: Promise<{ childId: string }>;
+};
+
+export default async function RecordsPage({ params }: Props) {
+  const { childId } = await params;
+  const staffName = await getStaffName();
+  if (!staffName) redirect("/login");
+
+  const supabase = await createClient();
+
+  const [childResult, childrenResult, recordsResult] = await Promise.all([
+    supabase.from("children").select("*").eq("id", childId).single(),
+    supabase.from("children").select("*").order("id"),
+    supabase
+      .from("records")
+      .select("*")
+      .eq("child_id", childId)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  if (!childResult.data) redirect("/");
+
+  const child = childResult.data as Child;
+  const allChildren = (childrenResult.data as Child[]) ?? [];
+  const records = (recordsResult.data as RecordType[]) ?? [];
+
+  const today = new Date().toISOString().split("T")[0];
+  const todayRecords = records.filter((r) => r.date === today);
+  const olderRecords = records.filter((r) => r.date !== today);
+
+  return (
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-10 bg-gradient-to-r from-sky-400 to-violet-400 text-white shadow-md">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="rounded-full p-1 transition hover:bg-white/20"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+            </Link>
+            <ChildSwitcher
+              children={allChildren}
+              currentChildId={childId}
+              basePath="records"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm opacity-90">{staffName}</span>
+            <Link
+              href="/"
+              className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium transition hover:bg-white/30"
+            >
+              園児一覧
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-2xl px-4 py-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold">{child.name} の記録</h2>
+          <Link
+            href={`/children/${childId}/new`}
+            className="rounded-xl bg-yellow-100/40 px-4 py-2 text-sm font-bold text-gray-500 transition hover:bg-yellow-100/70"
+          >
+            + 新規記録
+          </Link>
+        </div>
+
+        {records.length === 0 ? (
+          <div className="rounded-2xl border border-border bg-card p-8 text-center">
+            <p className="text-4xl">📋</p>
+            <p className="mt-2 font-medium text-text-light">
+              まだ記録がありません
+            </p>
+            <Link
+              href={`/children/${childId}/new`}
+              className="mt-4 inline-block rounded-xl bg-yellow-100/40 px-6 py-2.5 text-sm font-bold text-gray-500 transition hover:bg-yellow-100/70"
+            >
+              最初の記録を作成
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {todayRecords.length > 0 && (
+              <section>
+                <h3 className="mb-2 text-sm font-bold text-primary">
+                  今日の記録（{todayRecords.length}件）
+                </h3>
+                <div className="space-y-3">
+                  {todayRecords.map((record) => (
+                    <RecordCard key={record.id} record={record} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {olderRecords.length > 0 && (
+              <section>
+                <h3 className="mb-2 text-sm font-bold text-text-light">
+                  過去の記録（{olderRecords.length}件）
+                </h3>
+                <div className="space-y-3">
+                  {olderRecords.map((record) => (
+                    <RecordCard key={record.id} record={record} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
