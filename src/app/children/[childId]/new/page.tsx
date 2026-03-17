@@ -5,6 +5,8 @@ import Header from "@/components/Header";
 import RecordForm from "@/components/RecordForm";
 import type { Child, Record as RecordType } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 type Props = {
   params: Promise<{ childId: string }>;
 };

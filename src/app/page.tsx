@@ -7,6 +7,8 @@ import ChildCard from "@/components/ChildCard";
 import BatchSummaryButton from "@/components/BatchSummaryButton";
 import type { Child } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 type TodayStatus = "出席" | "欠席" | "未入力";
 
 const VALID_ATTENDANCE = ["出席", "欠席", "遅刻", "早退"] as const;
