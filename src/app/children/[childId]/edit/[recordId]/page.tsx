@@ -28,7 +28,8 @@ export default async function EditRecordPage({ params }: Props) {
       <Header
         staffName={staffName}
         title={`${(childResult.data as Child).name} の記録を編集`}
-        backHref={`/children/${childId}/records`}
+        backHref="/"
+        saveBeforeBack
       />
       <main className="mx-auto max-w-2xl px-4 py-6">
         <RecordForm

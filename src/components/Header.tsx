@@ -8,10 +8,19 @@ type HeaderProps = {
   staffName: string;
   title?: string;
   backHref?: string;
+  saveBeforeBack?: boolean;
 };
 
-export default function Header({ staffName, title, backHref }: HeaderProps) {
+export default function Header({ staffName, title, backHref, saveBeforeBack }: HeaderProps) {
   const router = useRouter();
+
+  const handleBack = () => {
+    if (saveBeforeBack) {
+      window.dispatchEvent(new CustomEvent("save-before-navigate", { detail: { backHref } }));
+    } else {
+      router.push(backHref!);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-10 bg-gradient-to-r from-sky-400 to-violet-400 text-white shadow-md">
@@ -19,7 +28,7 @@ export default function Header({ staffName, title, backHref }: HeaderProps) {
         <div className="flex items-center gap-3">
           {backHref && (
             <button
-              onClick={() => router.push(backHref)}
+              onClick={handleBack}
               className="rounded-full p-1 transition hover:bg-white/20"
             >
               <svg

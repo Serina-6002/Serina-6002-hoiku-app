@@ -1,6 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AttendanceBadge from "./AttendanceBadge";
 import { deleteRecord } from "@/lib/actions/records";
@@ -8,25 +9,55 @@ import type { Record as RecordType, AttendanceType } from "@/lib/types";
 
 type RecordCardProps = {
   record: RecordType;
+  compact?: boolean;
+  summaryText?: string;
 };
 
-
-export default function RecordCard({ record }: RecordCardProps) {
-  const [isPending, startTransition] = useTransition();
+export default function RecordCard({ record, compact = false, summaryText }: RecordCardProps) {
+  const router = useRouter();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isPending, setIsPending] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const isAbsent = ["欠席", "遅刻", "早退"].includes(record.attendance_type);
 
-  const handleDelete = () => {
-    if (!confirm("この記録を削除しますか？")) return;
-    startTransition(async () => {
-      await deleteRecord(record.id, record.child_id);
-    });
+  const handleDeleteClick = () => setShowConfirm(true);
+  const handleCancel = () => {
+    setShowConfirm(false);
+    setError(null);
   };
+  const handleConfirmDelete = async () => {
+    setIsPending(true);
+    setError(null);
+    const result = await deleteRecord(record.id, record.child_id);
+    setIsPending(false);
+    setShowConfirm(false);
+    if ("error" in result) {
+      setError(result.error);
+      return;
+    }
+    setDeleted(true);
+  };
+
+  useEffect(() => {
+    if (!deleted) return;
+    const timer = setTimeout(() => router.refresh(), 2000);
+    return () => clearTimeout(timer);
+  }, [deleted, router]);
 
   const date = new Date(record.created_at);
   const timeStr = `${date.getHours().toString().padStart(2, "0")}:${date
     .getMinutes()
     .toString()
     .padStart(2, "0")}`;
+
+  if (deleted) {
+    return (
+      <div className="rounded-2xl border border-border bg-green-100 p-4">
+        <p className="text-sm font-medium text-green-700">削除しました</p>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -47,7 +78,7 @@ export default function RecordCard({ record }: RecordCardProps) {
         <p className="mb-2 text-sm text-red-600">理由: {record.reason}</p>
       )}
 
-      {!isAbsent && (
+      {!compact && record.attendance_type !== "欠席" && (
         <div className="mb-2 space-y-1.5">
           {record.mood && (
             <div className="flex items-center gap-2">
@@ -103,19 +134,19 @@ export default function RecordCard({ record }: RecordCardProps) {
               )}
             </div>
           )}
-          {record.nap && record.nap !== "[]" && record.nap !== '[{"hour":"","minute":"","position":""},{"hour":"","minute":"","position":""},{"hour":"","minute":"","position":""}]' && (() => {
+          {record.nap && record.nap !== "[]" && (() => {
             try {
-              const entries = JSON.parse(record.nap) as { hour: string; minute: string; position: string }[];
-              const filled = entries.filter((e) => e.hour || e.minute || e.position);
+              const entries = JSON.parse(record.nap) as { hour: string; minute: string; endHour: string; endMinute: string; position: string }[];
+              const filled = entries.filter((e) => e.hour || e.minute || e.endHour || e.endMinute || e.position);
               if (filled.length === 0) return null;
               return (
                 <div className="space-y-1">
                   <span className="text-xs font-bold text-text-light">😴 午睡:</span>
                   {filled.map((e, i) => (
                     <div key={i} className="flex items-center gap-2 pl-2">
-                      {(e.hour || e.minute) && (
-                        <span className="inline-flex items-center rounded-lg bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">
-                          {e.hour || "--"}:{e.minute || "--"}
+                      {(e.hour || e.minute || e.endHour || e.endMinute) && (
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">
+                          <span>🕛{e.hour || "--"}:{e.minute || "--"}～🕛{e.endHour || "--"}:{e.endMinute || "--"}</span>
                         </span>
                       )}
                       {e.position && (
@@ -170,27 +201,64 @@ export default function RecordCard({ record }: RecordCardProps) {
         </div>
       )}
 
+      {summaryText && (
+        <div className="mb-3 rounded-lg bg-accent-light p-2">
+          <p className="mb-1 text-xs font-bold text-accent">AIまとめ</p>
+          <p className="text-sm leading-relaxed">{summaryText}</p>
+        </div>
+      )}
+
       {record.memo && (
         <p className="mb-3 rounded-lg bg-accent-light p-2 text-sm">
           {record.memo}
         </p>
       )}
 
-      <div className="flex justify-end gap-2">
-        <Link
-          href={`/children/${record.child_id}/edit/${record.id}`}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-light transition hover:bg-gray-50"
-        >
-          編集
-        </Link>
-        <button
-          onClick={handleDelete}
-          disabled={isPending}
-          className="rounded-lg border border-danger/30 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger-light disabled:opacity-50"
-        >
-          削除
-        </button>
-      </div>
+      {error && (
+        <div className="mb-3 rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">
+          削除に失敗しました
+        </div>
+      )}
+
+      {showConfirm ? (
+        <div className="mt-3 rounded-xl border border-border bg-gray-50 p-3">
+          <p className="mb-3 text-sm font-medium">本当に削除しますか？</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleConfirmDelete}
+              disabled={isPending}
+              className="rounded-lg bg-danger px-3 py-1.5 text-xs font-medium text-white transition hover:bg-danger/90 disabled:opacity-50"
+            >
+              {isPending ? "削除中..." : "削除"}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={isPending}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-gray-100 disabled:opacity-50"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-end gap-2">
+          <Link
+            href={`/children/${record.child_id}/edit/${record.id}`}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-light transition hover:bg-gray-50"
+          >
+            編集
+          </Link>
+          <button
+            onClick={handleDeleteClick}
+            disabled={isPending}
+            className="rounded-lg border border-danger/30 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger-light disabled:opacity-50"
+          >
+            削除
+          </button>
+        </div>
+      )}
     </div>
   );
 }

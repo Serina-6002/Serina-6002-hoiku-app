@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useState, useEffect } from "react";
-import { createRecord, updateRecord } from "@/lib/actions/records";
+import { useActionState, useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { createRecord, updateRecord, autoSaveRecord, createRecordForBack } from "@/lib/actions/records";
 import type { Record as RecordType, AttendanceType, Child } from "@/lib/types";
 
 type RecordFormProps = {
@@ -11,13 +12,34 @@ type RecordFormProps = {
 
 const DRAFT_KEY_PREFIX = "hoiku-draft-";
 
+type FormDataShape = {
+  child_id: string;
+  attendance_type: string;
+  reason: string;
+  meal: string;
+  meal_memo: string;
+  snack: string;
+  snack_memo: string;
+  nap: string;
+  nap_memo: string;
+  bowel: string;
+  bowel_memo: string;
+  mood: string;
+  mood_memo: string;
+  memo: string;
+};
+
 export default function RecordForm({ child, record }: RecordFormProps) {
+  const router = useRouter();
   const isEdit = !!record;
   const action = isEdit ? updateRecord : createRecord;
   const [state, formAction, isPending] = useActionState(action, null);
+  const [backSaveError, setBackSaveError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
 
-  const [attendanceType, setAttendanceType] = useState<AttendanceType>(
-    record?.attendance_type ?? "出席"
+  const [attendanceType, setAttendanceType] = useState<AttendanceType | "">(
+    record?.attendance_type ?? ""
   );
   const [memo, setMemo] = useState(record?.memo ?? "");
   const [reason, setReason] = useState(record?.reason ?? "");
@@ -28,17 +50,28 @@ export default function RecordForm({ child, record }: RecordFormProps) {
   const [snack, setSnack] = useState(record?.snack ?? "");
   const [snackMemo, setSnackMemo] = useState(record?.snack_memo ?? "");
 
-  type NapEntry = { hour: string; minute: string; position: string };
+  type NapEntry = { hour: string; minute: string; endHour: string; endMinute: string; position: string };
   const emptyNapEntries: NapEntry[] = [
-    { hour: "", minute: "", position: "" },
-    { hour: "", minute: "", position: "" },
-    { hour: "", minute: "", position: "" },
+    { hour: "", minute: "", endHour: "", endMinute: "", position: "" },
+    { hour: "", minute: "", endHour: "", endMinute: "", position: "" },
+    { hour: "", minute: "", endHour: "", endMinute: "", position: "" },
   ];
   const parseNapEntries = (raw: string): NapEntry[] => {
     if (!raw) return emptyNapEntries;
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length === 3) return parsed;
+      if (Array.isArray(parsed) && parsed.length === 3) {
+        return parsed.map((p: unknown) => {
+          const e = p as Record<string, string>;
+          return {
+            hour: e.hour ?? "",
+            minute: e.minute ?? "",
+            endHour: e.endHour ?? "",
+            endMinute: e.endMinute ?? "",
+            position: e.position ?? "",
+          };
+        });
+      }
     } catch { /* ignore */ }
     return emptyNapEntries;
   };
@@ -57,7 +90,16 @@ export default function RecordForm({ child, record }: RecordFormProps) {
     if (!raw) return emptyBowelEntries;
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length === 3) return parsed;
+      if (Array.isArray(parsed) && parsed.length === 3) {
+        return parsed.map((p: unknown) => {
+          const e = p as Record<string, string>;
+          return {
+            hour: e.hour ?? "",
+            minute: e.minute ?? "",
+            condition: e.condition ?? "",
+          };
+        });
+      }
     } catch { /* ignore */ }
     return emptyBowelEntries;
   };
@@ -140,7 +182,32 @@ export default function RecordForm({ child, record }: RecordFormProps) {
     }
   }, [state, isPending, draftKey]);
 
+  useEffect(() => {
+    if (state?.success) {
+      setSuccessMessage(isEdit ? "更新しました" : "保存しました");
+    }
+  }, [state, isEdit]);
+
+  useEffect(() => {
+    if (!successMessage) return;
+    const timer = setTimeout(() => {
+      router.push("/");
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [successMessage, router]);
+
   const attendanceOptions: AttendanceType[] = ["出席", "欠席", "遅刻", "早退"];
+  const isValidAttendance = (v: string): v is AttendanceType =>
+    attendanceOptions.includes(v as AttendanceType);
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (!attendanceType || !isValidAttendance(attendanceType)) {
+      e.preventDefault();
+      setAttendanceError("出欠区分を選択してください");
+      return;
+    }
+    setAttendanceError(null);
+  };
 
   const toggleCategory = (name: string) => {
     setOpenCategory((prev) => (prev === name ? null : name));
@@ -160,14 +227,18 @@ export default function RecordForm({ child, record }: RecordFormProps) {
         const entry = next[index];
         validateTime(`nap-${index}`, entry.hour, entry.minute);
       }
+      if (field === "endHour" || field === "endMinute") {
+        const entry = next[index];
+        validateTime(`nap-end-${index}`, entry.endHour, entry.endMinute);
+      }
       return next;
     });
   };
 
   const fillCurrentTime = (index: number) => {
     const now = new Date();
-    updateNapEntry(index, "hour", now.getHours().toString().padStart(2, "0"));
-    updateNapEntry(index, "minute", now.getMinutes().toString().padStart(2, "0"));
+    updateNapEntry(index, "endHour", now.getHours().toString().padStart(2, "0"));
+    updateNapEntry(index, "endMinute", now.getMinutes().toString().padStart(2, "0"));
   };
 
   const napHasData = napEntries.some((e) => e.hour || e.minute || e.position);
@@ -194,8 +265,130 @@ export default function RecordForm({ child, record }: RecordFormProps) {
   const bowelHasData = bowelEntries.some((e) => e.hour || e.minute || e.condition);
   const bowelJsonValue = JSON.stringify(bowelEntries);
 
+  const toData = (): FormDataShape => ({
+    child_id: child.id,
+    attendance_type: attendanceType,
+    reason,
+    meal, meal_memo: mealMemo, snack, snack_memo: snackMemo,
+    nap: napJsonValue, nap_memo: napMemo,
+    bowel: bowelJsonValue, bowel_memo: bowelMemo,
+    mood, mood_memo: moodMemo, memo,
+  });
+
+  const initialDataRef = useRef<FormDataShape | null>(null);
+  if (initialDataRef.current === null) {
+    initialDataRef.current = record
+      ? {
+          child_id: child.id,
+          attendance_type: record.attendance_type ?? "出席",
+          reason: record.reason ?? "",
+          meal: record.meal ?? "",
+          meal_memo: record.meal_memo ?? "",
+          snack: record.snack ?? "",
+          snack_memo: record.snack_memo ?? "",
+          nap: record.nap ?? "",
+          nap_memo: record.nap_memo ?? "",
+          bowel: record.bowel ?? "",
+          bowel_memo: record.bowel_memo ?? "",
+          mood: record.mood ?? "",
+          mood_memo: record.mood_memo ?? "",
+          memo: record.memo ?? "",
+        }
+      : toData();
+  }
+
+  const hasChanges = () => {
+    const cur = toData();
+    const init = initialDataRef.current!;
+    return (
+      cur.attendance_type !== init.attendance_type ||
+      cur.reason !== init.reason ||
+      cur.meal !== init.meal ||
+      cur.meal_memo !== init.meal_memo ||
+      cur.snack !== init.snack ||
+      cur.snack_memo !== init.snack_memo ||
+      cur.nap !== init.nap ||
+      cur.nap_memo !== init.nap_memo ||
+      cur.bowel !== init.bowel ||
+      cur.bowel_memo !== init.bowel_memo ||
+      cur.mood !== init.mood ||
+      cur.mood_memo !== init.mood_memo ||
+      cur.memo !== init.memo
+    );
+  };
+
+  const didMount = useRef(false);
+  const isDirty = useRef(false);
+  const recordRef = useRef(record);
+  recordRef.current = record;
+  const currentData = useRef({
+    child_id: child.id, attendance_type: attendanceType, reason,
+    meal, meal_memo: mealMemo, snack, snack_memo: snackMemo,
+    nap: napJsonValue, nap_memo: napMemo,
+    bowel: bowelJsonValue, bowel_memo: bowelMemo,
+    mood, mood_memo: moodMemo, memo,
+  });
+  currentData.current = {
+    child_id: child.id, attendance_type: attendanceType, reason,
+    meal, meal_memo: mealMemo, snack, snack_memo: snackMemo,
+    nap: napJsonValue, nap_memo: napMemo,
+    bowel: bowelJsonValue, bowel_memo: bowelMemo,
+    mood, mood_memo: moodMemo, memo,
+  };
+
+  useEffect(() => {
+    if (!isEdit || !record) return;
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
+    isDirty.current = true;
+    const timer = setTimeout(() => {
+      autoSaveRecord(record.id, currentData.current).then(() => {
+        isDirty.current = false;
+      });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isEdit, record, child.id, attendanceType, reason, meal, mealMemo, snack, snackMemo, napJsonValue, napMemo, bowelJsonValue, bowelMemo, mood, moodMemo, memo]);
+
+  useEffect(() => {
+    const handleSaveBeforeNavigate = async (e: Event) => {
+      const ev = e as CustomEvent<{ backHref: string }>;
+      const backHref = ev.detail?.backHref ?? "/";
+      setBackSaveError(null);
+
+      if (!hasChanges()) {
+        router.push(backHref);
+        return;
+      }
+
+      if (!attendanceType || !isValidAttendance(attendanceType)) {
+        setAttendanceError("出欠区分を選択してください");
+        return;
+      }
+
+      const data = toData();
+      if (isEdit && record) {
+        const result = await autoSaveRecord(record.id, data);
+        if ("error" in result) {
+          setBackSaveError(result.error);
+          return;
+        }
+      } else {
+        const result = await createRecordForBack(data);
+        if ("error" in result) {
+          setBackSaveError(result.error);
+          return;
+        }
+      }
+      router.push(backHref);
+    };
+    window.addEventListener("save-before-navigate", handleSaveBeforeNavigate);
+    return () => window.removeEventListener("save-before-navigate", handleSaveBeforeNavigate);
+  }, [isEdit, record, child.id, attendanceType, reason, meal, mealMemo, snack, snackMemo, napJsonValue, napMemo, bowelJsonValue, bowelMemo, mood, moodMemo, memo]);
+
   return (
-    <form action={formAction} className="space-y-5">
+    <form action={formAction} onSubmit={handleSubmit} className="space-y-5">
       <input type="hidden" name="child_id" value={child.id} />
       {isEdit && <input type="hidden" name="record_id" value={record.id} />}
 
@@ -218,7 +411,10 @@ export default function RecordForm({ child, record }: RecordFormProps) {
                 name="attendance_type"
                 value={opt}
                 checked={attendanceType === opt}
-                onChange={() => setAttendanceType(opt)}
+                onChange={() => {
+                  setAttendanceType(opt);
+                  setAttendanceError(null);
+                }}
                 className="sr-only"
               />
               {opt}
@@ -226,6 +422,12 @@ export default function RecordForm({ child, record }: RecordFormProps) {
           ))}
         </div>
       </div>
+
+      {attendanceError && (
+        <div className="rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">
+          {attendanceError}
+        </div>
+      )}
 
       {isAbsent && (
         <div className="rounded-2xl border border-border bg-card p-4">
@@ -247,7 +449,7 @@ export default function RecordForm({ child, record }: RecordFormProps) {
         <input type="hidden" name="reason" value="" />
       )}
 
-      {!isAbsent && (
+      {attendanceType !== "欠席" && (
         <div className="rounded-2xl border border-border bg-card p-4">
           <p className="mb-3 text-sm font-bold text-text-light">記録項目</p>
           <div className="space-y-2">
@@ -499,9 +701,13 @@ export default function RecordForm({ child, record }: RecordFormProps) {
                     <span className="text-xs font-bold text-text-light w-4">{i + 1}</span>
                     <button
                       type="button"
-                      onClick={() => fillCurrentTime(i)}
-                      className="rounded-lg bg-white border border-border px-2 py-1.5 text-lg transition hover:bg-primary-light"
-                      title="現在時刻を入力"
+                      onClick={() => {
+                        const now = new Date();
+                        updateNapEntry(i, "hour", now.getHours().toString().padStart(2, "0"));
+                        updateNapEntry(i, "minute", now.getMinutes().toString().padStart(2, "0"));
+                      }}
+                      className="rounded-lg border border-border px-2 py-1.5 text-lg transition hover:bg-primary-light"
+                      title="開始時刻を入力"
                     >
                       🕛
                     </button>
@@ -509,7 +715,7 @@ export default function RecordForm({ child, record }: RecordFormProps) {
                       type="text"
                       inputMode="numeric"
                       maxLength={2}
-                      value={entry.hour}
+                      value={entry.hour ?? ""}
                       onChange={(e) => updateNapEntry(i, "hour", e.target.value.replace(/\D/g, "").slice(0, 2))}
                       placeholder="HH"
                       className="w-12 rounded-lg border border-border bg-white px-2 py-1.5 text-center text-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -519,8 +725,36 @@ export default function RecordForm({ child, record }: RecordFormProps) {
                       type="text"
                       inputMode="numeric"
                       maxLength={2}
-                      value={entry.minute}
+                      value={entry.minute ?? ""}
                       onChange={(e) => updateNapEntry(i, "minute", e.target.value.replace(/\D/g, "").slice(0, 2))}
+                      placeholder="MM"
+                      className="w-12 rounded-lg border border-border bg-white px-2 py-1.5 text-center text-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <span className="font-bold text-text-light">～</span>
+                    <button
+                      type="button"
+                      onClick={() => fillCurrentTime(i)}
+                      className="rounded-lg border border-border px-2 py-1.5 text-lg transition hover:bg-primary-light"
+                      title="終了時刻を入力"
+                    >
+                      🕛
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={2}
+                      value={entry.endHour ?? ""}
+                      onChange={(e) => updateNapEntry(i, "endHour", e.target.value.replace(/\D/g, "").slice(0, 2))}
+                      placeholder="HH"
+                      className="w-12 rounded-lg border border-border bg-white px-2 py-1.5 text-center text-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <span className="font-bold text-text-light">:</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={2}
+                      value={entry.endMinute ?? ""}
+                      onChange={(e) => updateNapEntry(i, "endMinute", e.target.value.replace(/\D/g, "").slice(0, 2))}
                       placeholder="MM"
                       className="w-12 rounded-lg border border-border bg-white px-2 py-1.5 text-center text-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
@@ -580,7 +814,7 @@ export default function RecordForm({ child, record }: RecordFormProps) {
                       type="text"
                       inputMode="numeric"
                       maxLength={2}
-                      value={entry.hour}
+                      value={entry.hour ?? ""}
                       onChange={(e) => updateBowelEntry(i, "hour", e.target.value.replace(/\D/g, "").slice(0, 2))}
                       placeholder="HH"
                       className="w-12 rounded-lg border border-border bg-white px-2 py-1.5 text-center text-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -590,7 +824,7 @@ export default function RecordForm({ child, record }: RecordFormProps) {
                       type="text"
                       inputMode="numeric"
                       maxLength={2}
-                      value={entry.minute}
+                      value={entry.minute ?? ""}
                       onChange={(e) => updateBowelEntry(i, "minute", e.target.value.replace(/\D/g, "").slice(0, 2))}
                       placeholder="MM"
                       className="w-12 rounded-lg border border-border bg-white px-2 py-1.5 text-center text-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -651,9 +885,15 @@ export default function RecordForm({ child, record }: RecordFormProps) {
         />
       </div>
 
-      {state?.error && (
+      {successMessage && (
+        <div className="rounded-xl bg-green-100 px-4 py-3 text-sm font-medium text-green-700">
+          {successMessage}
+        </div>
+      )}
+
+      {(state?.error || backSaveError) && (
         <div className="rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">
-          {state.error}
+          {state?.error ?? backSaveError}
         </div>
       )}
 

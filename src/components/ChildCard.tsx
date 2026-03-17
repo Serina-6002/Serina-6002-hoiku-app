@@ -1,8 +1,17 @@
 import Link from "next/link";
 import type { Child } from "@/lib/types";
 
+type TodayStatus = "出席" | "欠席" | "未入力";
+
 type ChildCardProps = {
   child: Child;
+  todayStatus: TodayStatus;
+};
+
+const statusStyles: Record<TodayStatus, string> = {
+  出席: "bg-green-100 text-green-700",
+  欠席: "bg-red-100 text-red-700",
+  未入力: "bg-gray-100 text-gray-500",
 };
 
 const avatarColors = [
@@ -27,7 +36,7 @@ function getAge(birthDate: string): number {
   return age;
 }
 
-export default function ChildCard({ child }: ChildCardProps) {
+export default function ChildCard({ child, todayStatus }: ChildCardProps) {
   const colorIndex =
     child.id.charCodeAt(child.id.length - 1) % avatarColors.length;
   const initial = child.name_kana.charAt(0);
@@ -37,16 +46,21 @@ export default function ChildCard({ child }: ChildCardProps) {
     <div className="rounded-2xl border border-border bg-card p-4 shadow-sm transition hover:shadow-md">
       <div className="flex items-center gap-3">
         <div
-          className={`flex h-12 w-12 items-center justify-center rounded-full text-xl font-bold ${avatarColors[colorIndex]}`}
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl font-bold ${avatarColors[colorIndex]}`}
         >
           {initial}
         </div>
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <p className="text-base font-bold">{child.name}</p>
           <p className="text-sm text-text-light">
             {child.name_kana} / {age}歳
           </p>
         </div>
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${statusStyles[todayStatus]}`}
+        >
+          {todayStatus}
+        </span>
       </div>
       <div className="mt-3 flex gap-2">
         <Link

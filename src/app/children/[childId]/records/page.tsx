@@ -4,8 +4,9 @@ import { getStaffName } from "@/lib/actions/auth";
 import { createClient } from "@/lib/supabase/server";
 import Header from "@/components/Header";
 import ChildSwitcher from "@/components/ChildSwitcher";
-import RecordCard from "@/components/RecordCard";
+import RecordsListWithFilter from "@/components/RecordsListWithFilter";
 import type { Child, Record as RecordType } from "@/lib/types";
+import { getDailySummary } from "@/lib/actions/ai";
 
 type Props = {
   params: Promise<{ childId: string }>;
@@ -37,6 +38,7 @@ export default async function RecordsPage({ params }: Props) {
   const today = new Date().toISOString().split("T")[0];
   const todayRecords = records.filter((r) => r.date === today);
   const olderRecords = records.filter((r) => r.date !== today);
+  const savedSummary = await getDailySummary(childId, today);
 
   return (
     <div className="min-h-screen">
@@ -105,33 +107,13 @@ export default async function RecordsPage({ params }: Props) {
             </Link>
           </div>
         ) : (
-          <div className="space-y-6">
-            {todayRecords.length > 0 && (
-              <section>
-                <h3 className="mb-2 text-sm font-bold text-primary">
-                  今日の記録（{todayRecords.length}件）
-                </h3>
-                <div className="space-y-3">
-                  {todayRecords.map((record) => (
-                    <RecordCard key={record.id} record={record} />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {olderRecords.length > 0 && (
-              <section>
-                <h3 className="mb-2 text-sm font-bold text-text-light">
-                  過去の記録（{olderRecords.length}件）
-                </h3>
-                <div className="space-y-3">
-                  {olderRecords.map((record) => (
-                    <RecordCard key={record.id} record={record} />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
+          <RecordsListWithFilter
+            childId={childId}
+            childName={child.name}
+            todayRecords={todayRecords}
+            olderRecords={olderRecords}
+            savedSummary={savedSummary}
+          />
         )}
       </main>
     </div>

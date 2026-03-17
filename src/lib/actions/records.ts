@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getStaffName } from "./auth";
 
 export async function createRecord(
-  _prevState: { error: string } | null,
+  _prevState: { error?: string; success?: boolean } | null,
   formData: FormData
 ) {
   const staffName = await getStaffName();
@@ -49,11 +49,62 @@ export async function createRecord(
   }
 
   revalidatePath(`/children/${childId}/records`);
-  redirect(`/children/${childId}/records`);
+  return { success: true };
+}
+
+export async function createRecordForBack(data: {
+  child_id: string;
+  attendance_type: string;
+  reason: string;
+  meal: string;
+  meal_memo: string;
+  snack: string;
+  snack_memo: string;
+  nap: string;
+  nap_memo: string;
+  bowel: string;
+  bowel_memo: string;
+  mood: string;
+  mood_memo: string;
+  memo: string;
+}): Promise<{ success: true } | { error: string }> {
+  const staffName = await getStaffName();
+  if (!staffName) return { error: "未ログイン" };
+
+  if (
+    ["欠席", "遅刻", "早退"].includes(data.attendance_type) &&
+    !(data.reason || "").trim()
+  ) {
+    return { error: "欠席・遅刻・早退の場合は理由を入力してください" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("records").insert({
+    child_id: data.child_id,
+    staff_name: staffName,
+    date: new Date().toISOString().split("T")[0],
+    attendance_type: data.attendance_type,
+    reason: data.reason || "",
+    meal: data.meal || "",
+    meal_memo: data.meal_memo || "",
+    snack: data.snack || "",
+    snack_memo: data.snack_memo || "",
+    nap: data.nap || "",
+    nap_memo: data.nap_memo || "",
+    bowel: data.bowel || "",
+    bowel_memo: data.bowel_memo || "",
+    mood: data.mood || "",
+    mood_memo: data.mood_memo || "",
+    memo: data.memo || "",
+  });
+
+  if (error) return { error: "保存に失敗しました: " + error.message };
+  revalidatePath(`/children/${data.child_id}/records`);
+  return { success: true };
 }
 
 export async function updateRecord(
-  _prevState: { error: string } | null,
+  _prevState: { error?: string; success?: boolean } | null,
   formData: FormData
 ) {
   const staffName = await getStaffName();
@@ -98,19 +149,68 @@ export async function updateRecord(
   }
 
   revalidatePath(`/children/${childId}/records`);
-  redirect(`/children/${childId}/records`);
+  return { success: true };
 }
 
-export async function deleteRecord(recordId: string, childId: string) {
+export async function autoSaveRecord(
+  recordId: string,
+  data: {
+    child_id: string;
+    attendance_type: string;
+    reason: string;
+    meal: string;
+    meal_memo: string;
+    snack: string;
+    snack_memo: string;
+    nap: string;
+    nap_memo: string;
+    bowel: string;
+    bowel_memo: string;
+    mood: string;
+    mood_memo: string;
+    memo: string;
+  }
+): Promise<{ success: true } | { error: string }> {
   const staffName = await getStaffName();
-  if (!staffName) redirect("/login");
+  if (!staffName) return { error: "未ログイン" };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("records")
+    .update({
+      attendance_type: data.attendance_type,
+      reason: data.reason,
+      meal: data.meal,
+      meal_memo: data.meal_memo,
+      snack: data.snack,
+      snack_memo: data.snack_memo,
+      nap: data.nap,
+      nap_memo: data.nap_memo,
+      bowel: data.bowel,
+      bowel_memo: data.bowel_memo,
+      mood: data.mood,
+      mood_memo: data.mood_memo,
+      memo: data.memo,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", recordId);
+
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
+export async function deleteRecord(
+  recordId: string,
+  childId: string
+): Promise<{ success: true } | { error: string }> {
+  const staffName = await getStaffName();
+  if (!staffName) return { error: "未ログイン" };
 
   const supabase = await createClient();
   const { error } = await supabase.from("records").delete().eq("id", recordId);
 
-  if (error) {
-    return { error: "削除に失敗しました" };
-  }
+  if (error) return { error: "削除に失敗しました" };
 
   revalidatePath(`/children/${childId}/records`);
+  return { success: true };
 }
