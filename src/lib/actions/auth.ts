@@ -37,10 +37,10 @@ export async function login(
   redirect("/");
 }
 
-export async function logout() {
+export async function logout(): Promise<{ ok: true }> {
   const cookieStore = await cookies();
   cookieStore.delete("staff_name");
-  redirect("/login");
+  return { ok: true };
 }
 
 export async function getStaffName(): Promise<string | null> {

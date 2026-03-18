@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { logout } from "@/lib/actions/auth";
 
 type HeaderProps = {
@@ -13,6 +14,19 @@ type HeaderProps = {
 
 export default function Header({ staffName, title, backHref, saveBeforeBack }: HeaderProps) {
   const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      router.push("/login");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   const handleBack = () => {
     if (saveBeforeBack) {
@@ -53,12 +67,13 @@ export default function Header({ staffName, title, backHref, saveBeforeBack }: H
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm opacity-90">{staffName}</span>
-          <form action={logout}>
+          <form onSubmit={handleLogout}>
             <button
               type="submit"
-              className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium transition hover:bg-white/30"
+              disabled={isLoggingOut}
+              className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium transition hover:bg-white/30 disabled:opacity-50"
             >
-              ログアウト
+              {isLoggingOut ? "ログアウト中..." : "ログアウト"}
             </button>
           </form>
           <Link
