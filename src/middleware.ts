@@ -12,8 +12,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!staffName) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  if (!staffName || staffName.trim() === "") {
+    const res = NextResponse.redirect(new URL("/login", request.url));
+    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    return res;
   }
 
   return NextResponse.next();

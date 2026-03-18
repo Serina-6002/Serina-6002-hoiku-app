@@ -16,13 +16,12 @@ export default function Header({ staffName, title, backHref, saveBeforeBack }: H
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogout = async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
     try {
       await logout();
-      window.location.href = "/login";
+      window.location.replace("/login");
     } finally {
       setIsLoggingOut(false);
     }
@@ -67,15 +66,14 @@ export default function Header({ staffName, title, backHref, saveBeforeBack }: H
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm opacity-90">{staffName}</span>
-          <form onSubmit={handleLogout}>
-            <button
-              type="submit"
-              disabled={isLoggingOut}
-              className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium transition hover:bg-white/30 disabled:opacity-50"
-            >
-              {isLoggingOut ? "ログアウト中..." : "ログアウト"}
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium transition hover:bg-white/30 disabled:opacity-50"
+          >
+            {isLoggingOut ? "ログアウト中..." : "ログアウト"}
+          </button>
           <Link
             href="/"
             className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium transition hover:bg-white/30"

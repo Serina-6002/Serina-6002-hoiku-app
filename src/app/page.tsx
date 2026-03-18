@@ -8,6 +8,7 @@ import BatchSummaryButton from "@/components/BatchSummaryButton";
 import type { Child } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type TodayStatus = "出席" | "欠席" | "未入力";
 
@@ -15,7 +16,7 @@ const VALID_ATTENDANCE = ["出席", "欠席", "遅刻", "早退"] as const;
 
 export default async function HomePage() {
   const staffName = await getStaffName();
-  if (!staffName) redirect("/login");
+  if (!staffName || staffName.trim() === "") redirect("/login");
 
   const supabase = await createClient();
   const today = new Date().toISOString().split("T")[0];
