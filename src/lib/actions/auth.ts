@@ -39,7 +39,13 @@ export async function login(
 
 export async function logout(): Promise<{ ok: true }> {
   const cookieStore = await cookies();
-  cookieStore.delete("staff_name");
+  cookieStore.set("staff_name", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
   return { ok: true };
 }
 

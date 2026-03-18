@@ -22,7 +22,7 @@ export default function Header({ staffName, title, backHref, saveBeforeBack }: H
     setIsLoggingOut(true);
     try {
       await logout();
-      router.push("/login");
+      window.location.href = "/login";
     } finally {
       setIsLoggingOut(false);
     }
