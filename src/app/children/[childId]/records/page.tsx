@@ -5,6 +5,35 @@ import RecordsListWithFilter from "@/components/RecordsListWithFilter";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type FetchError =
+  | { type: "child"; message: string }
+  | { type: "allChildren"; message: string }
+  | { type: "records"; message: string; supabaseError?: string }
+  | { type: "getDailySummary"; message: string }
+  | null;
+
+function ErrorFallback({
+  message,
+  detail,
+}: {
+  message: string;
+  detail?: string;
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="text-center">
+        <p className="text-text-light">{message}</p>
+        {detail && (
+          <p className="mt-1 text-sm text-text-light/80">{detail}</p>
+        )}
+        <Link href="/" className="mt-4 inline-block text-primary underline">
+          園児一覧へ戻る
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export default async function RecordsPage({
   params,
 }: {
@@ -20,15 +49,9 @@ export default async function RecordsPage({
     }
 
     if (!childId) {
+      console.error("[RecordsPage] childId が不正です", { childId });
       return (
-        <div className="flex min-h-screen items-center justify-center">
-          <div className="text-center">
-            <p className="text-text-light">園児を指定してください</p>
-            <Link href="/" className="mt-4 inline-block text-primary underline">
-              園児一覧へ戻る
-            </Link>
-          </div>
-        </div>
+        <ErrorFallback message="園児を指定してください" />
       );
     }
 
@@ -60,40 +83,90 @@ export default async function RecordsPage({
     let child: Child | null = null;
     let allChildren: Child[] = [];
     let records: RecordType[] = [];
+    let fetchError: FetchError = null;
 
     try {
       const supabase = await createClient();
-      const [childResult, childrenResult, recordsResult] = await Promise.all([
-        supabase.from("children").select("*").eq("id", childId).single(),
-        supabase.from("children").select("*").order("id"),
-        supabase
-          .from("records")
-          .select("*")
-          .eq("child_id", childId)
-          .order("created_at", { ascending: false }),
-      ]);
 
-      child = (childResult?.data as Child) ?? null;
-      const rawChildren = childrenResult?.data;
-      allChildren = Array.isArray(rawChildren) ? (rawChildren as Child[]) : [];
-      const rawRecords = recordsResult?.data;
-      records = Array.isArray(rawRecords) ? (rawRecords as RecordType[]) : [];
-    } catch {
+      const childResult = await supabase
+        .from("children")
+        .select("*")
+        .eq("id", childId)
+        .single();
+
+      if (childResult.error) {
+        if (!fetchError) fetchError = { type: "child", message: childResult.error.message };
+        console.error("[RecordsPage] child 取得失敗", {
+          childId,
+          error: childResult.error.message,
+          code: childResult.error.code,
+        });
+      } else {
+        child = (childResult.data as Child) ?? null;
+      }
+
+      const childrenResult = await supabase
+        .from("children")
+        .select("*")
+        .order("id");
+
+      if (childrenResult.error) {
+        if (!fetchError) fetchError = { type: "allChildren", message: childrenResult.error.message };
+        console.error("[RecordsPage] allChildren 取得失敗", {
+          childId,
+          error: childrenResult.error.message,
+          code: childrenResult.error.code,
+        });
+      } else {
+        const rawChildren = childrenResult.data;
+        allChildren = Array.isArray(rawChildren) ? (rawChildren as Child[]) : [];
+      }
+
+      const recordsResult = await supabase
+        .from("records")
+        .select("*")
+        .eq("child_id", childId)
+        .order("created_at", { ascending: false });
+
+      if (recordsResult.error) {
+        if (!fetchError) fetchError = {
+          type: "records",
+          message: recordsResult.error.message,
+          supabaseError: recordsResult.error.message,
+        };
+        console.error("[RecordsPage] records 取得失敗", {
+          childId,
+          error: recordsResult.error.message,
+          code: recordsResult.error.code,
+          details: recordsResult.error.details,
+        });
+      } else {
+        const rawRecords = recordsResult.data;
+        records = Array.isArray(rawRecords) ? (rawRecords as RecordType[]) : [];
+      }
+    } catch (err) {
+      console.error("[RecordsPage] Supabase 接続・クエリで例外", {
+        childId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      fetchError = { type: "records", message: "接続エラーが発生しました" };
       child = null;
       allChildren = [];
       records = [];
     }
 
     if (!child) {
+      const errorMessage =
+        fetchError?.type === "child"
+          ? "園児の取得に失敗しました"
+          : fetchError?.type === "records" || fetchError?.type === "allChildren"
+            ? "データ取得に失敗しました"
+            : "園児が見つかりません";
       return (
-        <div className="flex min-h-screen items-center justify-center">
-          <div className="text-center">
-            <p className="text-text-light">園児が見つかりません</p>
-            <Link href="/" className="mt-4 inline-block text-primary underline">
-              園児一覧へ戻る
-            </Link>
-          </div>
-        </div>
+        <ErrorFallback
+          message={errorMessage}
+          detail={fetchError?.message}
+        />
       );
     }
 
@@ -101,8 +174,52 @@ export default async function RecordsPage({
     try {
       const today = new Date().toISOString().split("T")[0];
       savedSummary = await getDailySummary(childId, today);
-    } catch {
+    } catch (err) {
+      console.error("[RecordsPage] getDailySummary 失敗", {
+        childId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       savedSummary = null;
+    }
+
+    if (fetchError?.type === "records") {
+      return (
+        <div className="min-h-screen">
+          <header className="sticky top-0 z-10 bg-gradient-to-r from-sky-400 to-violet-400 text-white shadow-md">
+            <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
+              <Link href="/" className="text-lg font-bold">
+                保育メモ
+              </Link>
+              <Link
+                href="/"
+                className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium transition hover:bg-white/30"
+              >
+                園児一覧
+              </Link>
+            </div>
+          </header>
+          <main className="mx-auto max-w-2xl px-4 py-6">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+              <p className="font-medium text-amber-800">
+                記録の取得に失敗しました
+              </p>
+              <p className="mt-1 text-sm text-amber-700">
+                しばらくしてから再度お試しください
+              </p>
+              <Link
+                href="/"
+                className="mt-4 inline-block text-primary underline"
+              >
+                園児一覧へ戻る
+              </Link>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    if (fetchError?.type === "allChildren") {
+      console.error("[RecordsPage] allChildren のみ失敗、園児切り替えは非表示で続行");
     }
 
     const today = new Date().toISOString().split("T")[0];
@@ -190,16 +307,16 @@ export default async function RecordsPage({
         </main>
       </div>
     );
-  } catch {
+  } catch (err) {
+    console.error("[RecordsPage] 予期しないエラー", {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <p className="text-text-light">データ取得に失敗しました</p>
-          <Link href="/" className="mt-4 inline-block text-primary underline">
-            園児一覧へ戻る
-          </Link>
-        </div>
-      </div>
+      <ErrorFallback
+        message="データ取得に失敗しました"
+        detail="予期しないエラーが発生しました"
+      />
     );
   }
 }

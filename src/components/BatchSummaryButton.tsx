@@ -83,6 +83,9 @@ export default function BatchSummaryButton({ targetCount, unenteredCount }: Prop
             <p className="text-sm text-gray-600">
               今日も一日お疲れさまでした 🌷
             </p>
+            <p className="text-xs text-gray-600/80">
+              完了後はトップに戻ります・・・
+            </p>
           </div>
         </div>
       )}
