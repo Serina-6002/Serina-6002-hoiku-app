@@ -1,32 +1,15 @@
 import Link from "next/link";
-import { getStaffName } from "@/lib/actions/auth";
-import { createClient } from "@/lib/supabase/server";
 import ChildSwitcher from "@/components/ChildSwitcher";
 import RecordsListWithFilter from "@/components/RecordsListWithFilter";
-import type { Child, Record as RecordType } from "@/lib/types";
-import { getDailySummary } from "@/lib/actions/ai";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type Props = {
+export default async function RecordsPage({
+  params,
+}: {
   params: Promise<{ childId: string }>;
-};
-
-function ErrorFallback({ message }: { message: string }) {
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="text-center">
-        <p className="text-text-light">{message}</p>
-        <Link href="/" className="mt-4 inline-block text-primary underline">
-          園児一覧へ戻る
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-export default async function RecordsPage({ params }: Props) {
+}) {
   try {
     let childId = "";
     try {
@@ -37,9 +20,19 @@ export default async function RecordsPage({ params }: Props) {
     }
 
     if (!childId) {
-      return <ErrorFallback message="園児を指定してください" />;
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <p className="text-text-light">園児を指定してください</p>
+            <Link href="/" className="mt-4 inline-block text-primary underline">
+              園児一覧へ戻る
+            </Link>
+          </div>
+        </div>
+      );
     }
 
+    const { getStaffName } = await import("@/lib/actions/auth");
     let staffName: string | null = null;
     try {
       staffName = await getStaffName();
@@ -58,6 +51,11 @@ export default async function RecordsPage({ params }: Props) {
         </div>
       );
     }
+
+    const { createClient } = await import("@/lib/supabase/server");
+    const { getDailySummary } = await import("@/lib/actions/ai");
+    type Child = import("@/lib/types").Child;
+    type RecordType = import("@/lib/types").Record;
 
     let child: Child | null = null;
     let allChildren: Child[] = [];
@@ -87,7 +85,16 @@ export default async function RecordsPage({ params }: Props) {
     }
 
     if (!child) {
-      return <ErrorFallback message="園児が見つかりません" />;
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <p className="text-text-light">園児が見つかりません</p>
+            <Link href="/" className="mt-4 inline-block text-primary underline">
+              園児一覧へ戻る
+            </Link>
+          </div>
+        </div>
+      );
     }
 
     let savedSummary: Awaited<ReturnType<typeof getDailySummary>> = null;
@@ -184,6 +191,15 @@ export default async function RecordsPage({ params }: Props) {
       </div>
     );
   } catch {
-    return <ErrorFallback message="データ取得に失敗しました" />;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-text-light">データ取得に失敗しました</p>
+          <Link href="/" className="mt-4 inline-block text-primary underline">
+            園児一覧へ戻る
+          </Link>
+        </div>
+      </div>
+    );
   }
 }
