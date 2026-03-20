@@ -22,26 +22,19 @@ export async function addChild(
 
   const supabase = await createClient();
 
-  const { data: existing } = await supabase
-    .from("children")
-    .select("id")
-    .order("id", { ascending: false })
-    .limit(1);
-
-  let nextId = "c1";
-  if (existing && existing.length > 0) {
-    const lastNum = parseInt(existing[0].id.replace("c", ""), 10);
-    nextId = `c${lastNum + 1}`;
-  }
+  const id = crypto.randomUUID();
 
   const { error } = await supabase.from("children").insert({
-    id: nextId,
+    id,
     name,
     name_kana: nameKana,
     birth_date: birthDate,
   });
 
   if (error) {
+    if (error.code === "23505") {
+      return { error: "この園児は既に登録されています" };
+    }
     return { error: "追加に失敗しました: " + error.message };
   }
 
