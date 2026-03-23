@@ -59,19 +59,20 @@ export default function RecordsListWithFilter({
         ))}
       </div>
 
-      <DailySummarySection
-        childId={childId}
-        childName={childName}
-        todayRecords={todayRecords}
-        savedSummary={savedSummary}
-      />
-
       <div className="space-y-6">
-        {filteredTodayRecords.length > 0 && (
+        {todayRecords.length > 0 && (
           <section>
-            <h3 className="mb-2 text-sm font-bold text-primary">
-              今日の記録（{filteredTodayRecords.length}件）
-            </h3>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-bold text-primary">
+                今日の記録（{filteredTodayRecords.length}件）
+              </h3>
+              <DailySummarySection
+                childId={childId}
+                childName={childName}
+                todayRecords={todayRecords}
+                savedSummary={savedSummary}
+              />
+            </div>
             <div className="space-y-3">
               {filteredTodayRecords.map((record) => (
                 <RecordCard

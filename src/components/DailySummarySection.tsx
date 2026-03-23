@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Lottie from "lottie-react";
 import loadingAnimation from "@/lottie/loading.json";
 import { generateDailySummary, saveDailySummary } from "@/lib/actions/ai";
@@ -19,6 +20,7 @@ export default function DailySummarySection({
   todayRecords,
   savedSummary,
 }: Props) {
+  const router = useRouter();
   const [summaryText, setSummaryText] = useState(
     savedSummary?.summary_text ?? ""
   );
@@ -48,6 +50,7 @@ export default function DailySummarySection({
     }
 
     setSummaryText(result.summary);
+    router.refresh();
     setLoading(false);
   }
 
